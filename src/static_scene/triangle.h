@@ -71,6 +71,8 @@ namespace CMU462 { namespace StaticScene {
    */
   void drawOutline(const Color& c) const;
 
+  unsigned int get_MortonCode() const;
+
  private:
 
   const Mesh* mesh;   ///< pointer to the mesh the triangle is a part of
@@ -78,6 +80,15 @@ namespace CMU462 { namespace StaticScene {
   size_t v1; ///< index into the mesh attribute arrays
   size_t v2; ///< index into the mesh attribute arrays
   size_t v3; ///< index into the mesh attribute arrays
+
+  /**
+   * Expands a 10-bit integer into 30 bits by inserting 2 zeros after each bit.
+   */
+  unsigned int expandBits(unsigned int v) const;
+  /**
+   * Calculates a 30-bit Morton code for the given 3D point located within the unit cube [0, 1].
+   */
+  unsigned int morton3D(float x, float y, float z) const;
 
 }; // class Triangle
 

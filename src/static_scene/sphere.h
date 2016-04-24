@@ -82,6 +82,8 @@ class Sphere : public Primitive {
   */
   void drawOutline(const Color& c) const;
 
+  unsigned int get_MortonCode() const;
+
  private:
 
   /**

@@ -27,10 +27,20 @@ struct BVHNode {
   inline bool isLeaf() const { return l == NULL && r == NULL; }
 
   BBox bb;        ///< bounding box of the node
+  unsigned int mCode;    ///< convert unit cube pos to morton code 
   size_t start;   ///< start index into the primitive list
   size_t range;   ///< range of index into the primitive list
   BVHNode* l;     ///< left child node
   BVHNode* r;     ///< right child node
+};
+
+/**
+ * compare morton code
+ */
+struct mCodeCmp{
+  bool operator()(const Primitive* i,const Primitive* j) const {
+    return (i->get_MortonCode()<j->get_MortonCode());
+  }
 };
 
 /**
@@ -116,8 +126,32 @@ class BVHAccel : public Aggregate {
    */
   void drawOutline(const Color& c) const { }
 
+  unsigned int get_MortonCode() const;
+
  private:
   BVHNode* root; ///< root node of the BVH
+  /**
+   * Expands a 10-bit integer into 30 bits by inserting 2 zeros after each bit.
+   */
+  unsigned int expandBits(unsigned int v) const;
+  /**
+   * Calculates a 30-bit Morton code for the given 3D point located within the unit cube [0, 1].
+   */
+  unsigned int morton3D(float x, float y, float z) const;
+  /**
+   * Generate hierarchy, split currNode and find left child and right child to it
+   */
+  bool generateHierarchy(BVHNode* currNode, size_t max_leaf_size); 
+  /**
+   * find split position
+   */
+  int findSplit(BVHNode* currNode); 
+  /**
+   * http://embeddedgurus.com/state-space/2014/09/fast-deterministic-and-portable-counting-leading-zeros/
+   */
+  uint32_t CLZ1(uint32_t x);
+
+
 };
 
 } // namespace StaticScene

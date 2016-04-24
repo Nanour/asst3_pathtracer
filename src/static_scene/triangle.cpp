@@ -12,15 +12,94 @@ BBox Triangle::get_bbox() const {
   
   // TODO: 
   // compute the bounding box of the triangle
+  Vector3D p0 = mesh->positions[v1];
+  Vector3D p1 = mesh->positions[v2];
+  Vector3D p2 = mesh->positions[v3];
+
+  double minx = min(p0.x, min(p1.x, p2.x));
+  double miny = min(p0.y, min(p1.y, p2.y));
+  double minz = min(p0.z, min(p1.z, p2.z));
+
+  double maxx = max(p0.x, max(p1.x, p2.x));
+  double maxy = max(p0.y, max(p1.y, p2.y));
+  double maxz = max(p0.z, max(p1.z, p2.z));
+
+  BBox Tri_bbox = BBox(minx, miny, minz, maxx, maxy, maxz);
   
-  return BBox();
+  return Tri_bbox;
+}
+
+unsigned int Triangle::get_MortonCode() const{
+  Vector3D p0 = mesh->positions[v1];
+  Vector3D p1 = mesh->positions[v2];
+  Vector3D p2 = mesh->positions[v3];
+
+  double minx = min(p0.x, min(p1.x, p2.x));
+  double miny = min(p0.y, min(p1.y, p2.y));
+  double minz = min(p0.z, min(p1.z, p2.z));
+
+  double maxx = max(p0.x, max(p1.x, p2.x));
+  double maxy = max(p0.y, max(p1.y, p2.y));
+  double maxz = max(p0.z, max(p1.z, p2.z));
+
+  Vector3D bb_min = Vector3D(minx, miny, minz);
+  Vector3D bb_max = Vector3D(maxx, maxy, maxz);
+
+  Vector3D center = (bb_min + bb_max) / 2;
+  Vector3D unit_center = (center + 1) / 2;
+
+  return morton3D((float)unit_center.x, (float)unit_center.y, (float)unit_center.z);
+
+}
+
+unsigned int Triangle::expandBits(unsigned int v) const{ 
+  //Expands a 10-bit integer into 30 bits by inserting 2 zeros after each bit.
+  v = (v * 0x00010001u) & 0xFF0000FFu;
+  v = (v * 0x00000101u) & 0x0F00F00Fu;
+  v = (v * 0x00000011u) & 0xC30C30C3u;
+  v = (v * 0x00000005u) & 0x49249249u;
+  return v;
+}
+
+unsigned int Triangle::morton3D(float x, float y, float z) const{ 
+  //Calculates a 30-bit Morton code for the given 3D point located within the unit cube [0, 1].
+  x = min(max(x * 1024.0f, 0.0f), 1023.0f);
+  y = min(max(y * 1024.0f, 0.0f), 1023.0f);
+  z = min(max(z * 1024.0f, 0.0f), 1023.0f);
+  unsigned int xx = expandBits((unsigned int)x);
+  unsigned int yy = expandBits((unsigned int)y);
+  unsigned int zz = expandBits((unsigned int)z);
+  return xx * 4 + yy * 2 + zz;
 }
 
 bool Triangle::intersect(const Ray& r) const {
   
   // TODO: implement ray-triangle intersection
-  
-  return false;
+  Vector3D p0 = mesh->positions[v1];
+  Vector3D p1 = mesh->positions[v2];
+  Vector3D p2 = mesh->positions[v3];
+
+  Vector3D e1 = p1-p0;
+  Vector3D e2 = p2-p0;
+  Vector3D s = r.o-p0;
+
+  Vector3D e1xd = cross(e1, r.d);
+  double test = dot(e1xd, e2);
+  if(test == 0){
+    return false;
+  }
+
+  Vector3D sxe2 = cross(s, e2);
+
+  double u = dot(-sxe2, r.d)/test;
+  double v = dot(e1xd, s)/test;
+  double t = dot(-sxe2, e1)/test;
+
+  if(0 <= u && 0 <= v && u+v <= 1 && t >= 0 && t >= r.min_t && t <= r.max_t){
+    return true;
+  }
+  else
+    return false;
 }
 
 bool Triangle::intersect(const Ray& r, Intersection *isect) const {
@@ -28,7 +107,43 @@ bool Triangle::intersect(const Ray& r, Intersection *isect) const {
   // TODO: 
   // implement ray-triangle intersection. When an intersection takes
   // place, the Intersection data should be updated accordingly
-  
+  Vector3D p0 = mesh->positions[v1];
+  Vector3D p1 = mesh->positions[v2];
+  Vector3D p2 = mesh->positions[v3];
+
+  Vector3D e1 = p1-p0;
+  Vector3D e2 = p2-p0;
+  Vector3D s = r.o-p0;
+
+  Vector3D e1xd = cross(e1, r.d);
+  double test = dot(e1xd, e2);
+  if(test == 0){
+    return false;
+  }
+
+  Vector3D sxe2 = cross(s, e2);
+
+  double u = dot(-sxe2, r.d)/test;
+  double v = dot(e1xd, s)/test;
+  double t = dot(-sxe2, e1)/test;
+
+  if(0 <= u && 0 <= v && u < 1 && v < 1 && u+v <= 1 && t >= r.min_t && t <= r.max_t){
+    isect->t = t;
+    isect->primitive = this;
+    Vector3D nP0 = mesh->normals[v1];
+    Vector3D nP1 = mesh->normals[v2];
+    Vector3D nP2 = mesh->normals[v3];
+    isect->n = u * nP1 + v * nP2 + (1-u-v)*nP0;
+
+    isect->bsdf = mesh->get_bsdf();
+    if(dot(isect->n, r.d) < 0){
+      return true;
+    }else{
+      isect->n *= -1;
+      return true; 
+    }
+  }
+
   return false;
 }
 

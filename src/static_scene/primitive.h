@@ -62,6 +62,8 @@ class Primitive {
    */
   virtual void drawOutline(const Color& c) const = 0;
 
+  virtual unsigned int get_MortonCode() const = 0;
+
 };
 
 } // namespace StaticScene
