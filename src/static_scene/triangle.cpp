@@ -46,10 +46,20 @@ unsigned int Triangle::get_MortonCode() const{
   Vector3D bb_max = Vector3D(maxx, maxy, maxz);
 
   Vector3D center = (bb_min + bb_max) / 2;
-  Vector3D unit_center = (center + 1) / 2;
+  Vector3D unit_center = normalization(center);
 
   return morton3D((float)unit_center.x, (float)unit_center.y, (float)unit_center.z);
 
+}
+
+Vector3D Triangle::normalization(Vector3D center) const{
+  // x ~ (-0.4, 0.4)
+  // y ~ (-0.76, 0.69)
+  // z ~ (-0.83, 0.65)
+  center.x = (center.x + 0.4)/ 0.8;
+  center.y = (center.y + 0.76) / (0.76 + 0.69);
+  center.z = (center.z + 0.83) / (0.83 + 0.65);
+  return center;
 }
 
 unsigned int Triangle::expandBits(unsigned int v) const{ 

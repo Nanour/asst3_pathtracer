@@ -26,7 +26,7 @@ BVHAccel::BVHAccel(const std::vector<Primitive *> &_primitives,
   double maxx = 0;
   for (size_t i = 0; i < primitives.size(); ++i) {
     bb.expand(primitives[i]->get_bbox());
-    double centerx =  primitives[i]->get_bbox().centroid().z;
+    double centerx =  primitives[i]->get_bbox().centroid().y;
     maxx = std::max(maxx, centerx);
     minx = std::min(minx, centerx);
     //cout << primitives[i]->get_bbox().centroid() << endl;
