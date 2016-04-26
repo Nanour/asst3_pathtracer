@@ -82,7 +82,7 @@ class Sphere : public Primitive {
   */
   void drawOutline(const Color& c) const;
 
-  unsigned int get_MortonCode() const;
+  unsigned int get_MortonCode(const Vector3D& max, const Vector3D& min) const;
 
  private:
 
@@ -98,6 +98,20 @@ class Sphere : public Primitive {
   Vector3D o; ///< origin of the sphere
   double r;   ///< radius
   double r2;  ///< radius squared
+
+  /**
+   * Expands a 10-bit integer into 30 bits by inserting 2 zeros after each bit.
+   */
+  unsigned int expandBits(unsigned int v) const;
+  /**
+   * Calculates a 30-bit Morton code for the given 3D point located within the unit cube [0, 1].
+   */
+  unsigned int morton3D(float x, float y, float z) const;
+  /**
+   * normalize center to unit cube [0, 1]
+   */
+  Vector3D normalization(Vector3D center, Vector3D max, Vector3D min) const;
+
 
 }; // class Sphere
 

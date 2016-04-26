@@ -62,7 +62,7 @@ class Primitive {
    */
   virtual void drawOutline(const Color& c) const = 0;
 
-  virtual unsigned int get_MortonCode() const = 0;
+  virtual unsigned int get_MortonCode(const Vector3D& max, const Vector3D& min) const = 0;
 
 };
 

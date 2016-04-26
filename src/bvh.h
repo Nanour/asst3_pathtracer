@@ -34,14 +34,41 @@ struct BVHNode {
   BVHNode* r;     ///< right child node
 };
 
+struct CudaLNode {
+  int parent;
+  unsigned int mCode;
+  float x;
+  float y;
+  float z;
+};
+
+struct DeviceBBox {
+  float maxx;
+  float maxy;
+  float maxz;
+  float minx;
+  float miny;
+  float minz;
+  // __device__ void Init();
+  // __device__ void Expand(const DeviceBBox &bbox);
+};
+
+struct CudaBVHNode {
+  int parent;
+  int l;
+  int r;
+  int start;
+  int range;
+};
+
 /**
  * compare morton code
  */
-struct mCodeCmp{
-  bool operator()(const Primitive* i,const Primitive* j) const {
-    return (i->get_MortonCode()<j->get_MortonCode());
-  }
-};
+// struct mCodeCmp{
+//   bool operator()(const Primitive* i,const Primitive* j) const {
+//     return (i->get_MortonCode()<j->get_MortonCode());
+//   }
+// };
 
 /**
  * Bounding Volume Hierarchy for fast Ray - Primitive intersection.
@@ -126,22 +153,16 @@ class BVHAccel : public Aggregate {
    */
   void drawOutline(const Color& c) const { }
 
-  unsigned int get_MortonCode() const;
+  unsigned int get_MortonCode(const Vector3D& max, const Vector3D& min) const;
+
+  Vector3D valueRangeMin;
+  Vector3D valueRangeMax;
 
  private:
   BVHNode* root; ///< root node of the BVH
-  /**
-   * Expands a 10-bit integer into 30 bits by inserting 2 zeros after each bit.
-   */
-  unsigned int expandBits(unsigned int v) const;
-  /**
-   * Calculates a 30-bit Morton code for the given 3D point located within the unit cube [0, 1].
-   */
-  unsigned int morton3D(float x, float y, float z) const;
-  /**
-   * Generate hierarchy, split currNode and find left child and right child to it
-   */
-  bool generateHierarchy(BVHNode* currNode, size_t max_leaf_size); 
+
+  //bool generateHierarchy(BVHNode* currNode, size_t max_leaf_size); 
+  bool generateHierarchy(BVHNode* currNode, int currIdx); 
   /**
    * find split position
    */
@@ -151,6 +172,15 @@ class BVHAccel : public Aggregate {
    */
   uint32_t CLZ1(uint32_t x);
 
+  void SortPrimitive(int h, int t);
+
+  std::vector<unsigned int> mCodeList;
+
+  CudaLNode* cudaLNodeList;
+
+  DeviceBBox* deviceBboxList;
+
+  CudaBVHNode* cudaBVHNodeList;
 
 };
 

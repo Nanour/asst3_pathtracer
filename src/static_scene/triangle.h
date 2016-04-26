@@ -71,7 +71,7 @@ namespace CMU462 { namespace StaticScene {
    */
   void drawOutline(const Color& c) const;
 
-  unsigned int get_MortonCode() const;
+  unsigned int get_MortonCode(const Vector3D& max, const Vector3D& min) const;
 
  private:
 
@@ -92,7 +92,7 @@ namespace CMU462 { namespace StaticScene {
   /**
    * normalize center to unit cube [0, 1]
    */
-  Vector3D normalization(Vector3D center) const;
+  Vector3D normalization(Vector3D center, Vector3D max, Vector3D min) const;
 
 }; // class Triangle
 

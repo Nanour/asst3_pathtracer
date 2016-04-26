@@ -6,7 +6,10 @@
 namespace CMU462 { namespace StaticScene {
 
 Triangle::Triangle(const Mesh* mesh, size_t v1, size_t v2, size_t v3) :
-    mesh(mesh), v1(v1), v2(v2), v3(v3) { }
+    mesh(mesh), v1(v1), v2(v2), v3(v3) { 
+      //max = Vector3D(1, 1, 1);
+      //min = Vector3D(0, 0, 0);
+    }
 
 BBox Triangle::get_bbox() const {
   
@@ -16,49 +19,54 @@ BBox Triangle::get_bbox() const {
   Vector3D p1 = mesh->positions[v2];
   Vector3D p2 = mesh->positions[v3];
 
-  double minx = min(p0.x, min(p1.x, p2.x));
-  double miny = min(p0.y, min(p1.y, p2.y));
-  double minz = min(p0.z, min(p1.z, p2.z));
+  double minx = std::min(p0.x, std::min(p1.x, p2.x));
+  double miny = std::min(p0.y, std::min(p1.y, p2.y));
+  double minz = std::min(p0.z, std::min(p1.z, p2.z));
 
-  double maxx = max(p0.x, max(p1.x, p2.x));
-  double maxy = max(p0.y, max(p1.y, p2.y));
-  double maxz = max(p0.z, max(p1.z, p2.z));
+  double maxx = std::max(p0.x, std::max(p1.x, p2.x));
+  double maxy = std::max(p0.y, std::max(p1.y, p2.y));
+  double maxz = std::max(p0.z, std::max(p1.z, p2.z));
 
   BBox Tri_bbox = BBox(minx, miny, minz, maxx, maxy, maxz);
   
   return Tri_bbox;
 }
 
-unsigned int Triangle::get_MortonCode() const{
+unsigned int Triangle::get_MortonCode(const Vector3D& max, const Vector3D& min) const{
   Vector3D p0 = mesh->positions[v1];
   Vector3D p1 = mesh->positions[v2];
   Vector3D p2 = mesh->positions[v3];
 
-  double minx = min(p0.x, min(p1.x, p2.x));
-  double miny = min(p0.y, min(p1.y, p2.y));
-  double minz = min(p0.z, min(p1.z, p2.z));
+  double minx = std::min(p0.x, std::min(p1.x, p2.x));
+  double miny = std::min(p0.y, std::min(p1.y, p2.y));
+  double minz = std::min(p0.z, std::min(p1.z, p2.z));
 
-  double maxx = max(p0.x, max(p1.x, p2.x));
-  double maxy = max(p0.y, max(p1.y, p2.y));
-  double maxz = max(p0.z, max(p1.z, p2.z));
+  double maxx = std::max(p0.x, std::max(p1.x, p2.x));
+  double maxy = std::max(p0.y, std::max(p1.y, p2.y));
+  double maxz = std::max(p0.z, std::max(p1.z, p2.z));
 
   Vector3D bb_min = Vector3D(minx, miny, minz);
   Vector3D bb_max = Vector3D(maxx, maxy, maxz);
 
   Vector3D center = (bb_min + bb_max) / 2;
-  Vector3D unit_center = normalization(center);
+  Vector3D unit_center = normalization(center, max, min);
 
   return morton3D((float)unit_center.x, (float)unit_center.y, (float)unit_center.z);
 
 }
 
-Vector3D Triangle::normalization(Vector3D center) const{
+Vector3D Triangle::normalization(Vector3D center, Vector3D max, Vector3D min) const{
   // x ~ (-0.4, 0.4)
   // y ~ (-0.76, 0.69)
   // z ~ (-0.83, 0.65)
-  center.x = (center.x + 0.4)/ 0.8;
-  center.y = (center.y + 0.76) / (0.76 + 0.69);
-  center.z = (center.z + 0.83) / (0.83 + 0.65);
+  // center.x = (center.x + 0.4)/ 0.8;
+  // center.y = (center.y + 0.76) / (0.76 + 0.69);
+  // center.z = (center.z + 0.83) / (0.83 + 0.65);
+  
+  center.x = (center.x - min.x) / (max.x - min.x);
+  center.y = (center.y - min.y) / (max.y - min.y);
+  center.z = (center.z - min.z) / (max.z - min.z);
+
   return center;
 }
 

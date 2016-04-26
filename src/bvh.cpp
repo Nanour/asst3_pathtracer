@@ -22,23 +22,64 @@ BVHAccel::BVHAccel(const std::vector<Primitive *> &_primitives,
   // primitives.
 
   BBox bb;
-  double minx = INF_D;
-  double maxx = 0;
+  double minx = INF_D, miny = INF_D, minz = INF_D;
+  double maxx = 0, maxy = 0, maxz = 0;
   for (size_t i = 0; i < primitives.size(); ++i) {
     bb.expand(primitives[i]->get_bbox());
-    double centerx =  primitives[i]->get_bbox().centroid().y;
+    double centerx =  primitives[i]->get_bbox().centroid().x;
     maxx = std::max(maxx, centerx);
     minx = std::min(minx, centerx);
-    //cout << primitives[i]->get_bbox().centroid() << endl;
-    //cout << primitives[i]->get_MortonCode() << endl;
+
+    double centery =  primitives[i]->get_bbox().centroid().y;
+    maxy = std::max(maxy, centery);
+    miny = std::min(miny, centery);
+
+    double centerz =  primitives[i]->get_bbox().centroid().z;
+    maxz = std::max(maxz, centerz);
+    minz = std::min(minz, centerz);
   }
-  cout << maxx << endl;
-  cout << minx << endl;
+  // cout << maxx << endl;
+  // cout << minx << endl;
+  valueRangeMin = Vector3D(minx, miny, minz);
+  valueRangeMax = Vector3D(maxx, maxy, maxz);
+
+  for(size_t i = 0; i < primitives.size(); i++){
+    mCodeList.push_back(primitives[i]->get_MortonCode(valueRangeMax, valueRangeMin));
+  }
 
   //cout << primitives.size() << endl;
-  std::sort(primitives.begin(),primitives.end(),mCodeCmp());
+  //std::sort(primitives.begin(),primitives.end(),mCodeCmp());
+  SortPrimitive(0, primitives.size()-1);
   root = new BVHNode(bb, 0, primitives.size());
 
+  cudaLNodeList = new CudaLNode[primitives.size()];
+  deviceBboxList = new DeviceBBox[2 * primitives.size()];
+  cudaBVHNodeList = new CudaBVHNode[2 * primitives.size()];
+
+  for(size_t i = 0; i < primitives.size(); i++){
+    Vector3D nodeCentroid = primitives[i]->get_bbox().centroid();
+    cudaLNodeList[i].mCode = mCodeList[i];
+    cudaLNodeList[i].x = nodeCentroid.x;
+    cudaLNodeList[i].y = nodeCentroid.y;
+    cudaLNodeList[i].z = nodeCentroid.z;
+
+    Vector3D bbox_max = primitives[i]->get_bbox().max;
+    Vector3D bbox_min = primitives[i]->get_bbox().min;
+    deviceBboxList[i+primitives.size()].maxx = bbox_max.x;
+    deviceBboxList[i+primitives.size()].maxy = bbox_max.y;
+    deviceBboxList[i+primitives.size()].maxz = bbox_max.z;
+
+    deviceBboxList[i+primitives.size()].minx = bbox_min.x;
+    deviceBboxList[i+primitives.size()].miny = bbox_min.y;
+    deviceBboxList[i+primitives.size()].minz = bbox_min.z;
+  }
+
+  //Compute GPU
+  
+  //Reconstruct BVH
+  generateHierarchy(root, 0);
+
+/*
   std::stack<BVHNode*> stk;
   stk.push(root);
   while(stk.size() > 0){
@@ -46,26 +87,51 @@ BVHAccel::BVHAccel(const std::vector<Primitive *> &_primitives,
     stk.pop();
     bool hasChild = generateHierarchy(currNode, max_leaf_size);
     if(hasChild){
-      stk.push(currNode->l);
       stk.push(currNode->r);
+      stk.push(currNode->l);
     }
   }
   this->root = root;
   this->primitives = primitives;
-
+*/
 }
 
+bool BVHAccel::generateHierarchy(BVHNode* currNode, int currIdx) {
+    int lcIdx = cudaBVHNodeList[currIdx].l;
+    if (lcIdx >= 0) {
+      BBox lbox = BBox((double)deviceBboxList[lcIdx].minx, 
+        (double)deviceBboxList[lcIdx].miny,
+        (double)deviceBboxList[lcIdx].minz,
+        (double)deviceBboxList[lcIdx].maxx,
+        (double)deviceBboxList[lcIdx].maxy,
+        (double)deviceBboxList[lcIdx].maxz);
+      BVHNode* lc = new BVHNode(lbox, cudaBVHNodeList[lcIdx].start, cudaBVHNodeList[lcIdx].range);
+      currNode->l = lc;
+      generateHierarchy(lc, lcIdx);
+    }
+
+    int rcIdx = cudaBVHNodeList[currIdx].r;
+    if (rcIdx >= 0) {
+      BBox rbox = BBox((double)deviceBboxList[rcIdx].minx, 
+        (double)deviceBboxList[rcIdx].miny,
+        (double)deviceBboxList[rcIdx].minz,
+        (double)deviceBboxList[rcIdx].maxx,
+        (double)deviceBboxList[rcIdx].maxy,
+        (double)deviceBboxList[rcIdx].maxz);
+      BVHNode* rc = new BVHNode(rbox, cudaBVHNodeList[rcIdx].start, cudaBVHNodeList[rcIdx].range);
+      currNode->r = rc;
+      generateHierarchy(rc, rcIdx);
+    }
+}
+
+/*
 bool BVHAccel::generateHierarchy(BVHNode* currNode, size_t max_leaf_size){
   if(currNode->range <= max_leaf_size || currNode->bb.empty()){
+    cout << "Not Processed" << endl;
     currNode->l = NULL;
     currNode->r = NULL;
     return false;
   }
-
-  // std::vector<Primitive *> currPrimList;
-  // for(size_t i = currNode->start; i < (currNode->start + currNode->range); i++){
-  //   currPrimList.push_back(primitives[i]);
-  // }
 
   int split = findSplit(currNode); 
   cout << currNode->start+split << endl;
@@ -73,14 +139,14 @@ bool BVHAccel::generateHierarchy(BVHNode* currNode, size_t max_leaf_size){
   BBox leftbb, rightbb;
   size_t left = 0, right = 0;
 
-  for(size_t i = currNode->start; i < currNode->start+split; i++){
+  for(size_t i = currNode->start; i <= currNode->start+split; i++){
     Primitive* prim = primitives[i];
 
     leftbb.expand(prim->get_bbox());
     left++;
   }
 
-  for(size_t i = currNode->start+split; i < currNode->start+currNode->range; i++){
+  for(size_t i = currNode->start+split+1; i < currNode->start+currNode->range; i++){
     Primitive* prim = primitives[i];
 
     rightbb.expand(prim->get_bbox());
@@ -88,6 +154,7 @@ bool BVHAccel::generateHierarchy(BVHNode* currNode, size_t max_leaf_size){
   }
 
   if(currNode->range == left || currNode->range == right){
+    cout << "All in same side" << endl;
       return false;
     }
   else{
@@ -97,28 +164,23 @@ bool BVHAccel::generateHierarchy(BVHNode* currNode, size_t max_leaf_size){
   }
 
 }
-
+*/
 int BVHAccel::findSplit(BVHNode* currNode){
-
-  std::vector<Primitive *> currPrimList;
-  for(size_t i = currNode->start; i < (currNode->start + currNode->range); i++){
-    currPrimList.push_back(primitives[i]);
-  }
 
   int first = currNode->start;
   int last = currNode->start+currNode->range-1;
   // Identical Morton codes => split the range in the middle.
   cout << "first: " << currNode->start << endl;
-  unsigned int firstCode = primitives[first]->get_MortonCode();
+  unsigned int firstCode = primitives[first]->get_MortonCode(valueRangeMax, valueRangeMin);
   cout << "firstCode: " << firstCode << endl;
 
   cout << "last: " << currNode->start+currNode->range-1 << endl;
-  unsigned int lastCode = primitives[last]->get_MortonCode();
+  unsigned int lastCode = primitives[last]->get_MortonCode(valueRangeMax, valueRangeMin);
   cout << "lastCode: " << lastCode << endl;
 
   if (firstCode == lastCode)
-    //return (first + last) >> 1;
-    return first;
+    return (first + last) >> 1;
+    //return first;
 
   // Calculate the number of highest bits that are the same
   // for all objects, using the count-leading-zeros intrinsic.
@@ -131,13 +193,14 @@ int BVHAccel::findSplit(BVHNode* currNode){
 
   int split = first; // initial guess
   int step = last - first;
+  //cout << "S " << step << endl;
 
   do{
     step = (step + 1) >> 1; // exponential decrease
     int newSplit = split + step; // proposed new position
 
     if(newSplit < last){
-      unsigned int splitCode = primitives[newSplit]->get_MortonCode();
+      unsigned int splitCode = primitives[newSplit]->get_MortonCode(valueRangeMax, valueRangeMin);
       int splitPrefix = CLZ1(firstCode ^ splitCode);
       if(splitPrefix > commonPrefix)
         split = newSplit; // accept proposal
@@ -145,7 +208,7 @@ int BVHAccel::findSplit(BVHNode* currNode){
   }
   while (step > 1);
 
-  return split;
+  return split - first;
 
 }
 
@@ -204,25 +267,30 @@ uint32_t BVHAccel::CLZ1(uint32_t x) {
     return (uint32_t)clz_lkup[x >> n] - n;
 }
 
+void BVHAccel::SortPrimitive(int h, int t) {
+  if (h >= t) return;
+  int i = h;
+  int j = t;
+  unsigned int k = mCodeList[(i + j) >> 1];
 
-unsigned int BVHAccel::expandBits(unsigned int v) const{ 
-  //Expands a 10-bit integer into 30 bits by inserting 2 zeros after each bit.
-  v = (v * 0x00010001u) & 0xFF0000FFu;
-  v = (v * 0x00000101u) & 0x0F00F00Fu;
-  v = (v * 0x00000011u) & 0xC30C30C3u;
-  v = (v * 0x00000005u) & 0x49249249u;
-  return v;
-}
+  do {
+    while ((mCodeList[i] < k) && (i < t)) i++;
+    while ((k < mCodeList[j]) && (j > h)) j--;
+    if (i <= j) {
+      Primitive* s = primitives[i];
+      primitives[i] = primitives[j];
+      primitives[j] = s;
+      unsigned int s1 = mCodeList[i];
+      mCodeList[i] = mCodeList[j];
+      mCodeList[j] = s1;
+      i++;
+      j--;
+    }
+  }
+  while (i <= j);
 
-unsigned int BVHAccel::morton3D(float x, float y, float z) const{ 
-  //Calculates a 30-bit Morton code for the given 3D point located within the unit cube [0, 1].
-  x = min(max(x * 1024.0f, 0.0f), 1023.0f);
-  y = min(max(y * 1024.0f, 0.0f), 1023.0f);
-  z = min(max(z * 1024.0f, 0.0f), 1023.0f);
-  unsigned int xx = expandBits((unsigned int)x);
-  unsigned int yy = expandBits((unsigned int)y);
-  unsigned int zz = expandBits((unsigned int)z);
-  return xx * 4 + yy * 2 + zz;
+  if (i <= t) SortPrimitive(i, t);
+  if (j >= h) SortPrimitive(h, j);
 }
 
 BVHAccel::~BVHAccel() {
@@ -249,7 +317,7 @@ BBox BVHAccel::get_bbox() const {
   return root->bb;
 }
 
-unsigned int BVHAccel::get_MortonCode() const{
+unsigned int BVHAccel::get_MortonCode(const Vector3D& max, const Vector3D& min) const{
   return root->mCode;
 }
 
